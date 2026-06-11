@@ -639,7 +639,9 @@ select option{background:var(--bg4)}
 </div><!-- content -->
 </div><!-- shell -->
 <script>
-const API = 'http://127.0.0.1:5000';  // 改用 127.0.0.1 避免 localhost 解析問題
+const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://127.0.0.1:5000'
+  : window.location.origin;
 let G={candles:[],symbol:'',source:'yahoo'};
 let CH={};
 let IND={MA:true,BB:true,VOL:true,RSI:false,MACD:false,KD:false,ATR:false,OBV:false,GRID:false};
