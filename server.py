@@ -163,17 +163,26 @@ def news():
         feed = feedparser.parse(url)
         items = []
         for entry in feed.entries[:10]:
+            # 统一处理时间格式
+            time_str = '最新'
+            try:
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    # 将 struct_time 转换为 datetime，再格式化
+                    dt = datetime(*entry.published_parsed[:6])
+                    time_str = dt.strftime('%m-%d %H:%M')
+            except:
+                time_str = '最新'
+                
             items.append({
                 'title': entry.title,
                 'url': entry.link,
-                'time': entry.published_parsed.strftime('%m-%d %H:%M') if entry.published_parsed else '最新',
+                'time': time_str,
                 'src': entry.source.title if hasattr(entry, 'source') else 'Google News',
                 'sent': 'neu' 
             })
         return jsonify({'items': items})
     except Exception as e:
         return jsonify({'error': str(e), 'items': []}), 500
-
 # === 启动代码（放在最后面） ===
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # Render 会自动分配端口
