@@ -1168,7 +1168,6 @@ function renderCmp(){
   $('cmpstats').innerHTML=`<div style="display:grid;grid-template-columns:90px repeat(${stats.length},1fr);gap:4px;font-size:10px"><span class="mu">指標</span>${stats.map(s=>`<span style="color:${s.color};font-weight:500">${s.sym}</span>`).join('')}<span class="mu">報酬率</span>${stats.map(s=>`<span class="${s.roi>=0?'pos':'neg'}">${fmt(s.roi)}%</span>`).join('')}<span class="mu">夏普</span>${stats.map(s=>`<span class="${s.sharpe>=1?'acc':''}">${fmt(s.sharpe)}</span>`).join('')}<span class="mu">最大回撤</span>${stats.map(s=>`<span class="neg">${fmt(s.mdd)}%</span>`).join('')}</div>`;
   if(CMPD.length>=2){const cl=al.map(d=>d.c.map(c=>c.close));const rets=cl.map(c=>c.map((v,i)=>i===0?0:(v-c[i-1])/c[i-1]));let html=`<div style="display:grid;grid-template-columns:52px ${CMPD.map(()=>'44px').join(' ')};gap:2px;font-size:10px;margin-top:8px"><span class="mu">相關性</span>${CMPD.map(d=>`<span style="color:${d.color}">${d.symbol.split('.')[0].slice(0,5)}</span>`).join('')}`;for(let i=0;i<rets.length;i++){html+=`<span style="color:${CMPD[i].color}">${CMPD[i].symbol.split('.')[0].slice(0,5)}</span>`;for(let j=0;j<rets.length;j++){const c=pearson(rets[i],rets[j]);const col=c>.7?'var(--gr)':c<-.3?'var(--rd)':'var(--tx2)';html+=`<span style="color:${col}">${fmt(c)}</span>`}}html+='</div>';$('corr').innerHTML=html}
 }
-
 // News
 const NMOCK=[
   {title:'台積電法說會：AI需求強勁，下季營收指引優於預期',time:'2小時前',sent:'pos',src:'經濟日報',url:'#'},
@@ -1183,16 +1182,13 @@ const NMOCK=[
   {title:'央行維持利率不變，房市資金流向台股',time:'16小時前',sent:'neu',src:'工商時報',url:'#'},
 ];
 async function fetchNews(){
-  const kw = $('nkw').value || '台積電'; 
   $('nstat').textContent = '載入中...';
   let news = [];
   
   try {
-    // 直接在前端通过第三方跨域代理抓取 Google News RSS，不需要后端！
     const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
     
-    // 给8秒超时，避免转圈太久
     const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
     
@@ -1219,7 +1215,6 @@ async function fetchNews(){
     console.log("新闻抓取失败，回退到模拟数据", e);
   }
 
-  // 如果上面没抓到，自动降级回原来的模拟新闻
   if (!news.length) {
     news = NMOCK.filter(n => kw.length < 2 || n.title.includes(kw) || n.src.includes(kw));
     if (!news.length) news = NMOCK.slice(0, 6);
