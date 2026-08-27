@@ -756,61 +756,71 @@ async function fetchDraw(){
   $('sstat').textContent='載入中...';$('cload').style.display='flex';
   try{
     const barMap={'1d':'1D','1wk':'1W','1mo':'1M','1H':'1H','4H':'4H','1D':'1D','1W':'1W'};
-    // 加入時間戳記防止瀏覽器快取舊資料
     const nocache = Date.now(); 
     const url=src==='okx'
       ? `${API}/okx/kline?symbol=${sym}&bar=${barMap[intv]||'1D'}&limit=300&_=${nocache}`
       : `${API}/yahoo/kline?symbol=${sym}&period=${per}&interval=${intv}&_=${nocache}`;
 
-    // 使用自動重試機制
-    let d;
-    let attempts = 0;
-    const maxAttempts = 3;
+    const res = await fetch(url, { signal: AbortSignal.timeout(50000) });
+    const d = await res.json();
 
-    while (attempts < maxAttempts) {
-      try {
-        // 給後端足夠的喚醒時間（從 8 秒改為 50 秒）
-        const res = await fetch(url, { signal: AbortSignal.timeout(50000) });
-        d = await res.json();
-        if (!d.error) {
-          break; // 成功取得數據就跳出迴圈
-        }
-      } catch (e) {
-        // 失敗就等 2 秒再試一次
-      }
-      attempts++;
-      $('sstat').textContent = `重試中... (${attempts}/${maxAttempts})`;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    if (!d || d.error) { 
-      $('sstat').textContent='❌ 暫時無法取得資料，請稍後再試'; 
-      $('cload').style.display='none'; 
+    if (d.error) { 
+      $('sstat').textContent = '❌ ' + d.error; 
+      $('cload').style.display = 'none'; 
       return; 
     }
 
-    G.candles=d.candles;G.symbol=sym;G.source=src;
+    // 過濾掉 NaN 數據，防止圖表崩潰
+    const validCandles = (d.candles || []).filter(c => !isNaN(c.close) && c.close > 0);
+
+    if (validCandles.length === 0) {
+      $('sstat').textContent = '❌ 沒有有效數據'; 
+      $('cload').style.display = 'none'; 
+      return; 
+    }
+
+    G.candles = validCandles;
+    G.symbol = sym;
+    G.source = src;
+
     if(d.info){$('sinfo').innerHTML=`<b style="color:var(--tx)">${d.info.name||sym}</b><br>交易所：${d.info.exchange||'—'}<br>幣種：${d.info.currency||'—'}<br>產業：${d.info.sector||'—'}`}
-    const last=d.candles[d.candles.length-1],first=d.candles[0];
-    const chgP=(last.close-first.close)/first.close*100;
-    $('ctitle').textContent=sym;$('cpd').textContent=fmt(last.close,2);
-    $('ccd').innerHTML=`<span class="${chgP>=0?'pos':'neg'}">${chgP>=0?'+':''}${fmt(chgP)}%</span>`;
-    $('lp').textContent=fmt(last.close,2);$('lc').className='lc '+(chgP>=0?'up':'dn');$('lc').textContent=(chgP>=0?'▲':'▼')+Math.abs(chgP).toFixed(2)+'%';
-    const lo=Math.min(...d.candles.map(c=>c.low)),hi=Math.max(...d.candles.map(c=>c.high));
-    $('blo').value=fmt(lo*.98,0);$('bhi').value=fmt(hi*1.02,0);
-    $('btinfo').textContent=`✓ ${sym} — ${d.candles.length} 根K棒`;
-    $('btrng').textContent=`歷史範圍 ${fmt(lo)} ~ ${fmt(hi)}`;
-    const cls=d.candles.map(c=>c.close);
-    const dr=cls.map((v,i)=>i===0?0:Math.log(v/cls[i-1])).slice(1);
-    const mr=dr.reduce((a,b)=>a+b,0)/dr.length;
-    const sr=Math.sqrt(dr.map(r=>(r-mr)**2).reduce((a,b)=>a+b)/dr.length);
-    $('mcvol').value=fmt(sr*Math.sqrt(252)*100,1);
-    $('mcdrift').value=fmt(mr*252*100,1);
-    $('mcbars').value=Math.min(d.candles.length,60);
-    drawCharts(G.candles);calcSigs(G.candles);
-    $('sstat').textContent=`✓ ${d.count} 根K棒`;$('cload').style.display='none';
-    $('nsyminfo').textContent=`已載入 ${sym}，點擊「載入標的新聞」`;
-  }catch(e){$('sstat').textContent='❌ 連線失敗';$('cload').style.display='none'}
+
+    const last = validCandles[validCandles.length - 1];
+    const first = validCandles[0];
+    const chgP = (last.close - first.close) / first.close * 100;
+
+    $('ctitle').textContent = sym;
+    $('cpd').textContent = fmt(last.close, 2);
+    $('ccd').innerHTML = `<span class="${chgP>=0?'pos':'neg'}">${chgP>=0?'+':''}${fmt(chgP)}%</span>`;
+    $('lp').textContent = fmt(last.close, 2);
+    $('lc').className = 'lc ' + (chgP>=0?'up':'dn');
+    $('lc').textContent = (chgP>=0?'▲':'▼') + Math.abs(chgP).toFixed(2) + '%';
+
+    const lo = Math.min(...validCandles.map(c=>c.low));
+    const hi = Math.max(...validCandles.map(c=>c.high));
+    $('blo').value = fmt(lo*.98, 0);
+    $('bhi').value = fmt(hi*1.02, 0);
+    $('btinfo').textContent = `✓ ${sym} — ${validCandles.length} 根K棒`;
+    $('btrng').textContent = `歷史範圍 ${fmt(lo)} ~ ${fmt(hi)}`;
+
+    const cls = validCandles.map(c=>c.close);
+    const dr = cls.map((v,i)=>i===0?0:Math.log(v/cls[i-1])).slice(1);
+    const mr = dr.reduce((a,b)=>a+b,0)/dr.length;
+    const sr = Math.sqrt(dr.map(r=>(r-mr)**2).reduce((a,b)=>a+b)/dr.length);
+    $('mcvol').value = fmt(sr*Math.sqrt(252)*100, 1);
+    $('mcdrift').value = fmt(mr*252*100, 1);
+    $('mcbars').value = Math.min(validCandles.length, 60);
+
+    drawCharts(G.candles);
+    calcSigs(G.candles);
+
+    $('sstat').textContent = `✓ ${validCandles.length} 根K棒`;
+    $('cload').style.display = 'none';
+    $('nsyminfo').textContent = `已載入 ${sym}，點擊「載入標的新聞」`;
+  }catch(e){
+    $('sstat').textContent = '❌ 連線失敗'; 
+    $('cload').style.display = 'none';
+  }
 }
 // Indicators
 function cMA(data,n){return data.map((_,i)=>i<n-1?null:data.slice(i-n+1,i+1).reduce((a,b)=>a+b)/n)}
