@@ -1,4 +1,3 @@
-import math
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import yfinance as yf
@@ -7,6 +6,7 @@ from curl_cffi import requests as curl_requests
 from datetime import datetime
 import pandas as pd
 import os
+import math
 import feedparser
 
 app = Flask(__name__)
@@ -21,57 +21,94 @@ def twse_clean_symbol(symbol):
     return symbol
 
 def get_twse_history(symbol, period='6mo'):
+    """從台灣證券交易所取得日 K 線，並移除不完整或非法資料。"""
     stock_no = twse_clean_symbol(symbol)
     all_candles = []
-    
-    months_back = 6 if period == '6mo' else (12 if period == '1y' else 1)
-    
+
+    # 依照前端傳入的 period 決定抓幾個月
+    period_months = {
+        '1mo': 1,
+        '3mo': 3,
+        '6mo': 6,
+        '1y': 12,
+        '2y': 24,
+    }
+    months_back = period_months.get(period, 6)
+
     current = datetime.now()
+
     for i in range(months_back):
         year = current.year
         month = current.month - i
+
         while month <= 0:
             month += 12
             year -= 1
+
         date_str = f"{year}{month:02d}01"
-        
-        url = f'https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={date_str}&stockNo={stock_no}'
+        url = (
+            "https://www.twse.com.tw/exchangeReport/"
+            f"STOCK_DAY?response=json&date={date_str}&stockNo={stock_no}"
+         )
+
         try:
             resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
             data = resp.json()
-            if data.get('stat') == 'OK' and data.get('data'):
-                for row in data['data']:
-                    try:
-                        o = float(row[3])
-                        h = float(row[4])
-                        l = float(row[5])
-                        c = float(row[6])
-                        
-                        # 檢查是否有 NaN，如果有就跳過這筆資料
-                        if any(math.isnan(x) for x in [o, h, l, c]):
-                            continue
-                            
-                        all_candles.append({
-                            'time': row[0],
-                            'open': o,
-                            'high': h,
-                            'low': l,
-                            'close': c,
-                            'volume': int(row[1]) if row[1] else 0
-                        })
-                    except ValueError:
+
+            if data.get('stat') != 'OK' or not data.get('data'):
+                continue
+
+            for row in data['data']:
+                try:
+                    # TWSE 回傳的數字有時會包含逗號，例如 24,040,916
+                    def to_float(value):
+                        if value is None:
+                            return float('nan')
+                        val = str(value).replace(',', '').strip()
+                        return float(val) if val else float('nan')
+
+                    o = to_float(row[3])
+                    h = to_float(row[4])
+                    l = to_float(row[5])
+                    c = to_float(row[6])
+                    v = to_float(row[1]) if len(row) > 1 else 0
+
+                    # 任何 OHLC 是 NaN 或無限大，都不要送到前端，避免 JSON 解析失敗
+                    if not all(math.isfinite(x) for x in [o, h, l, c]):
                         continue
+
+                    # 成交量若不是有效數字，就以 0 處理
+                    volume = int(v) if math.isfinite(v) and v >= 0 else 0
+
+                    all_candles.append({
+                        'time': row[0],
+                        'open': round(o, 2),
+                        'high': round(h, 2),
+                        'low': round(l, 2),
+                        'close': round(c, 2),
+                        'volume': volume,
+                    })
+
+                except (ValueError, TypeError, IndexError):
+                    continue
+
         except Exception as e:
             print(f"TWSE Fetch Error: {e}")
-    
-    all_candles.reverse()
-    return all_candles
+
+    # 同一天可能因不同月份查詢而重複，依日期去重
+    unique_candles = {}
+    for candle in all_candles:
+        unique_candles[candle['time']] = candle
+
+    # 由舊到新排列
+    return sorted(unique_candles.values(), key=lambda x: x['time'])
 
 def get_twse_quote(symbol):
     stock_no = twse_clean_symbol(symbol)
     url = f'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?json=1&delay=0&ex_ch=tse_{stock_no}.tw'
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=5 )
         data = resp.json()
         if data and data.get('msgArray'):
             d = data['msgArray'][0]
@@ -112,28 +149,48 @@ def yahoo_kline():
     if not symbol:
         return jsonify({'error': '請提供股票代號'}), 400
 
+    # 優先嘗試從台灣證券交易所抓取 (台股代號通常是純數字或包含 .TW)
     if '.TW' in symbol or symbol.isdigit():
         candles = get_twse_history(symbol, period)
         if candles:
-            return jsonify({'success': True, 'symbol': symbol, 'count': len(candles), 'candles': candles, 'info': {'name': symbol, 'exchange': 'TWSE', 'currency': 'TWD', 'sector': '—'}})
-        else:
-            pass
+            return jsonify({
+                'success': True, 
+                'symbol': symbol, 
+                'count': len(candles), 
+                'candles': candles, 
+                'info': {'name': symbol, 'exchange': 'TWSE', 'currency': 'TWD', 'sector': '—'}
+            })
 
+    # 備援或美股則使用 yfinance
     try:
         ticker = yf.Ticker(symbol, session=yf_session)
         hist = ticker.history(period=period, interval=interval)
+        
         if hist.empty:
             return jsonify({'error': f'無法取得 {symbol} 的資料'}), 404
+            
         candles = []
         for idx, row in hist.iterrows():
-            candles.append({
-                'time': idx.strftime('%Y-%m-%d'),
-                'open': round(row['Open'], 2),
-                'high': round(row['High'], 2),
-                'low': round(row['Low'], 2),
-                'close': round(row['Close'], 2),
-                'volume': int(row['Volume']) if not pd.isna(row['Volume']) else 0
-            })
+            try:
+                o, h, l, c = float(row['Open']), float(row['High']), float(row['Low']), float(row['Close'])
+                # 過濾 NaN，避免 JSON 損壞
+                if not all(math.isfinite(x) for x in [o, h, l, c]):
+                    continue
+                
+                v = row['Volume']
+                volume = int(v) if pd.notna(v) and math.isfinite(float(v)) else 0
+                
+                candles.append({
+                    'time': idx.strftime('%Y-%m-%d'),
+                    'open': round(o, 2),
+                    'high': round(h, 2),
+                    'low': round(l, 2),
+                    'close': round(c, 2),
+                    'volume': volume
+                })
+            except:
+                continue
+                
         try:
             info = ticker.info
             info_data = {
@@ -160,7 +217,7 @@ def yahoo_quote():
         stock_no = twse_clean_symbol(symbol)
         url = f'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?json=1&delay=0&ex_ch=tse_{stock_no}.tw'
         try:
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, timeout=5 )
             data = resp.json()
             if data and data.get('msgArray'):
                 d = data['msgArray'][0]
@@ -206,7 +263,7 @@ def okx_kline():
     try:
         url = 'https://www.okx.com/api/v5/market/history-candles'
         params = {'instId': symbol, 'bar': bar, 'limit': limit}
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=10 )
         data = response.json()
         if data.get('code') != '0':
             return jsonify({'error': f'OKX API 錯誤: {data.get("msg")}'}), 400
@@ -237,7 +294,7 @@ def okx_ticker():
         
     try:
         url = 'https://www.okx.com/api/v5/market/ticker'
-        response = requests.get(url, params={'instId': symbol}, timeout=10)
+        response = requests.get(url, params={'instId': symbol}, timeout=10 )
         data = response.json()
         if data.get('code') != '0':
             return jsonify({'error': data.get('msg')}), 400
@@ -255,7 +312,7 @@ def news():
     q = request.args.get('q', '台積電')
     url = f'https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'
     try:
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(url )
         items = []
         for entry in feed.entries[:10]:
             time_str = '最新'

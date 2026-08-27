@@ -674,48 +674,46 @@ function togSB(id){const e=$(id);if(e)e.classList.toggle('hide')}
 function togI(n,el){IND[n]=!IND[n];el.classList.toggle('on',IND[n]);if(G.candles.length)drawCharts(G.candles)}
 
 // Server
-async function checkSrv(){
-  try{
-    const res = await fetch(API+'/ping', { signal: AbortSignal.timeout(3000) });
-    if(res.ok){
-      SRV=true;
-      $('srv').className='srv on';
-      $('srvtxt').textContent='伺服器在線';
+async function checkSrv() {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(`${API}/ping`, {
+        signal: AbortSignal.timeout(15000),
+        cache: 'no-store'
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      SRV = true;
+      $('srv').className = 'srv on';
+      $('srvtxt').textContent = '伺服器在線';
+
       fetchTicker();
-    } else {
-      throw new Error('伺服器回應錯誤');
+      return true;
+    } catch (e) {
+      console.log(`伺服器連線第 ${i + 1} 次失敗:`, e);
+
+      if (i < 2) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
     }
-  } catch(e){
-    console.log('伺服器離線:', e);
-    SRV=false;
-    $('srv').className='srv off';
-    $('srvtxt').textContent='伺服器離線';
+  }
+
+  SRV = false;
+  $('srv').className = 'srv off';
+  $('srvtxt').textContent = '伺服器離線';
+  return false;
+}
+
+async function refreshAll() {
+  const online = await checkSrv();
+
+  if (online) {
+    fetchTicker();
   }
 }
-async function refreshAll(){await checkSrv();if(SRV)fetchTicker()}
-
-// UI
-function switchTab(id,el){
-  document.querySelectorAll('.content>.panel').forEach(p=>p.classList.remove('on'));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
-  $('panel-'+id).classList.add('on');el.classList.add('on');
-}
-function switchST(id,el){
-  ['bts1','bts2','bts3'].forEach(s=>{const e=$(s);if(e)e.style.display='none'});
-  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
-  $(id).style.display='block';el.classList.add('on');
-}
-function togCard(hd){hd.closest('.card').classList.toggle('col')}
-function togSB(id){const e=$(id);if(e)e.classList.toggle('hide')}
-function togI(n,el){IND[n]=!IND[n];el.classList.toggle('on',IND[n]);if(G.candles.length)drawCharts(G.candles)}
-
-// Server
-async function checkSrv(){
-  try{await fetch(API+'/ping',{signal:AbortSignal.timeout(2000)});SRV=true;
-    $('srv').className='srv on';$('srvtxt').textContent='伺服器在線';fetchTicker();
-  }catch{SRV=false;$('srv').className='srv off';$('srvtxt').textContent='伺服器離線'}
-}
-async function refreshAll(){await checkSrv();if(SRV)fetchTicker()}
 
 // Ticker
 const TPAIRS=[
@@ -817,10 +815,20 @@ async function fetchDraw(){
     $('sstat').textContent = `✓ ${validCandles.length} 根K棒`;
     $('cload').style.display = 'none';
     $('nsyminfo').textContent = `已載入 ${sym}，點擊「載入標的新聞」`;
-  }catch(e){
-    $('sstat').textContent = '❌ 連線失敗'; 
+   } catch (e) {
+    console.error('K線載入失敗:', e);
+
+    if (!SRV) {
+      $('sstat').textContent = '❌ 後端伺服器未連線';
+    } else if (e instanceof SyntaxError) {
+      $('sstat').textContent = '❌ 後端回傳資料格式錯誤';
+    } else {
+      $('sstat').textContent = '❌ K線資料載入失敗';
+    }
+
     $('cload').style.display = 'none';
   }
+
 }
 // Indicators
 function cMA(data,n){return data.map((_,i)=>i<n-1?null:data.slice(i-n+1,i+1).reduce((a,b)=>a+b)/n)}
@@ -1296,8 +1304,25 @@ function renderPos(){
 
 // Init
 $('podate').value=new Date().toISOString().slice(0,10);
-renderPos();checkSrv();
-setInterval(()=>{if(SRV)fetchTicker()},30000);
+renderPos();
+
+(async function initApp() {
+  const online = await checkSrv();
+
+  if (online) {
+    // 後端成功連線後，自動載入預設的 2330.TW K 線
+    await fetchDraw();
+  }
+})();
+
+setInterval(async () => {
+  if (SRV) {
+    fetchTicker();
+  } else {
+    await checkSrv();
+  }
+}, 30000);
+
 fetchNews();
 </script>
 </body>
