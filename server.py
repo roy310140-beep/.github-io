@@ -155,6 +155,28 @@ def okx_ticker():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+import feedparser
+
+@app.route('/news')
+def news():
+    q = request.args.get('q', '台積電')
+    url = f'https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'
+    try:
+        feed = feedparser.parse(url)
+        items = []
+        for entry in feed.entries[:10]:
+            items.append({
+                'title': entry.title,
+                'url': entry.link,
+                'time': entry.published_parsed.strftime('%m-%d %H:%M') if entry.published_parsed else '最新',
+                'src': entry.source.title if hasattr(entry, 'source') else 'Google News',
+                'sent': 'neu' 
+            })
+        return jsonify({'items': items})
+    except Exception as e:
+        return jsonify({'error': str(e), 'items': []}), 500
+
+# === 启动代码（放在最后面） ===
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # Render 会自动分配端口
     app.run(host='0.0.0.0', port=port)
