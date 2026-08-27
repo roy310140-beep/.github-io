@@ -150,7 +150,7 @@ def okx_ticker():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+import os
 if __name__ == '__main__':
-    print("\n✅ 網格交易系統後端已啟動")
-    print("🌐 請打開瀏覽器訪問: http://localhost:5000\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))  # Render 会自动分配端口
+    app.run(host='0.0.0.0', port=port)
