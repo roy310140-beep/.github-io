@@ -175,7 +175,7 @@ def news():
         return jsonify({'error': str(e), 'items': []}), 500
         import feedparser
 
-@app.route('/news')
+@@app.route('/news')
 def news():
     q = request.args.get('q', '台積電')
     url = f'https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'
@@ -193,6 +193,11 @@ def news():
         return jsonify({'items': items})
     except Exception as e:
         return jsonify({'error': str(e), 'items': []}), 500
+
+# === 启动代码（放在最后面） ===
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))  # Render 会自动分配端口
+    app.run(host='0.0.0.0', port=port)
 
 # === 启动代码（放在最后面） ===
 if __name__ == '__main__':
