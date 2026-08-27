@@ -7,8 +7,8 @@ from curl_cffi import requests as curl_requests
 from datetime import datetime
 import pandas as pd
 import os
+import feedparser  # 放在顶部
 
-from curl_cffi import requests as curl_requests
 app = Flask(__name__)
 CORS(app)
 
@@ -154,8 +154,6 @@ def okx_ticker():
         return jsonify({'symbol': symbol, 'price': round(price, 2), 'change': round(change, 2), 'changePct': round(change_pct, 2)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-import feedparser
 
 @app.route('/news')
 def news():
