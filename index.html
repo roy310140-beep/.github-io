@@ -1169,19 +1169,8 @@ function renderCmp(){
   if(CMPD.length>=2){const cl=al.map(d=>d.c.map(c=>c.close));const rets=cl.map(c=>c.map((v,i)=>i===0?0:(v-c[i-1])/c[i-1]));let html=`<div style="display:grid;grid-template-columns:52px ${CMPD.map(()=>'44px').join(' ')};gap:2px;font-size:10px;margin-top:8px"><span class="mu">相關性</span>${CMPD.map(d=>`<span style="color:${d.color}">${d.symbol.split('.')[0].slice(0,5)}</span>`).join('')}`;for(let i=0;i<rets.length;i++){html+=`<span style="color:${CMPD[i].color}">${CMPD[i].symbol.split('.')[0].slice(0,5)}</span>`;for(let j=0;j<rets.length;j++){const c=pearson(rets[i],rets[j]);const col=c>.7?'var(--gr)':c<-.3?'var(--rd)':'var(--tx2)';html+=`<span style="color:${col}">${fmt(c)}</span>`}}html+='</div>';$('corr').innerHTML=html}
 }
 // News
-const NMOCK=[
-  {title:'台積電法說會：AI需求強勁，下季營收指引優於預期',time:'2小時前',sent:'pos',src:'經濟日報',url:'#'},
-  {title:'Fed暗示年內可能降息兩次，美股三大指數收紅',time:'3小時前',sent:'pos',src:'Reuters',url:'#'},
-  {title:'比特幣突破重要阻力位，分析師看好多頭趨勢',time:'4小時前',sent:'pos',src:'CoinDesk',url:'#'},
-  {title:'中國出口數據不如預期，亞洲市場承壓下跌',time:'5小時前',sent:'neg',src:'Bloomberg',url:'#'},
-  {title:'鴻海Q2財報出爐，AI伺服器營收佔比創新高',time:'6小時前',sent:'pos',src:'工商時報',url:'#'},
-  {title:'油價走跌拖累能源股，通膨預期降溫',time:'8小時前',sent:'neu',src:'WSJ',url:'#'},
-  {title:'聯電傳出客戶砍單，股價承壓下跌超3%',time:'10小時前',sent:'neg',src:'財訊',url:'#'},
-  {title:'日圓走弱衝擊亞幣，外資持續賣超台股',time:'12小時前',sent:'neg',src:'路透社',url:'#'},
-  {title:'輝達發布新一代AI晶片，台積電受惠股價創高',time:'14小時前',sent:'pos',src:'科技新報',url:'#'},
-  {title:'央行維持利率不變，房市資金流向台股',time:'16小時前',sent:'neu',src:'工商時報',url:'#'},
-];
 async function fetchNews(){
+  const kw = $('nkw').value || '台積電'; 
   $('nstat').textContent = '載入中...';
   let news = [];
   
@@ -1212,19 +1201,16 @@ async function fetchNews(){
       }
     }
   } catch(e) {
-    console.log("新闻抓取失败，回退到模拟数据", e);
+    console.log("新闻抓取失败", e);
   }
 
   if (!news.length) {
-    news = NMOCK.filter(n => kw.length < 2 || n.title.includes(kw) || n.src.includes(kw));
-    if (!news.length) news = NMOCK.slice(0, 6);
-    $('nstat').textContent = '新聞源暫時無法連接，顯示示範新聞';
+    $('nstat').textContent = '暫時無法連接到新聞源，請稍後再試';
   } else {
     $('nstat').textContent = `✓ 抓到 ${news.length} 則真實新聞`;
   }
   renderNews(news);
 }
-
 // Risk
 function calcRisk(){
   const cap=+$('rccap').value,risk=+$('rcrisk').value/100,sl=+$('rcsl').value/100,tp=+$('rctp').value/100;
