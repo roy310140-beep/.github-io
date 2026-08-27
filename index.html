@@ -1210,6 +1210,29 @@ async function fetchNews(){
     $('nstat').textContent = `✓ 抓到 ${news.length} 則真實新聞`;
   }
   renderNews(news);
+}async function fetchNews(){
+  const kw = $('nkw').value || '台積電'; 
+  $('nstat').textContent = '載入中...';
+  let news = [];
+  
+  try {
+    // 直接请求稳定可靠的后端！
+    const r = await fetch(`${API}/news?q=${encodeURIComponent(kw)}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    
+    if (d.items && d.items.length > 0) {
+      news = d.items;
+    }
+  } catch(e) {
+    console.log("新闻抓取失败", e);
+  }
+
+  if (!news.length) {
+    $('nstat').textContent = '暫時無法連接到新聞源，請稍後再試';
+  } else {
+    $('nstat').textContent = `✓ 抓到 ${news.length} 則真實新聞`;
+  }
+  renderNews(news);
 }
 // Risk
 function calcRisk(){
