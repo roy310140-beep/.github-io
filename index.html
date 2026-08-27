@@ -1169,48 +1169,8 @@ function renderCmp(){
   if(CMPD.length>=2){const cl=al.map(d=>d.c.map(c=>c.close));const rets=cl.map(c=>c.map((v,i)=>i===0?0:(v-c[i-1])/c[i-1]));let html=`<div style="display:grid;grid-template-columns:52px ${CMPD.map(()=>'44px').join(' ')};gap:2px;font-size:10px;margin-top:8px"><span class="mu">相關性</span>${CMPD.map(d=>`<span style="color:${d.color}">${d.symbol.split('.')[0].slice(0,5)}</span>`).join('')}`;for(let i=0;i<rets.length;i++){html+=`<span style="color:${CMPD[i].color}">${CMPD[i].symbol.split('.')[0].slice(0,5)}</span>`;for(let j=0;j<rets.length;j++){const c=pearson(rets[i],rets[j]);const col=c>.7?'var(--gr)':c<-.3?'var(--rd)':'var(--tx2)';html+=`<span style="color:${col}">${fmt(c)}</span>`}}html+='</div>';$('corr').innerHTML=html}
 }
 // News
+// News
 async function fetchNews(){
-  const kw = $('nkw').value || '台積電'; 
-  $('nstat').textContent = '載入中...';
-  let news = [];
-  
-  try {
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
-    
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-    const data = await res.json();
-    
-    if (data.contents) {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-      const items = xmlDoc.getElementsByTagName("item");
-      
-      for (let i = 0; i < Math.min(items.length, 10); i++) {
-        const title = items[i].getElementsByTagName("title")[0].textContent;
-        const link = items[i].getElementsByTagName("link")[0].textContent;
-        const pubDate = items[i].getElementsByTagName("pubDate")[0] ? new Date(items[i].getElementsByTagName("pubDate")[0].textContent) : new Date();
-        
-        news.push({
-          title: title,
-          url: link,
-          time: pubDate.toLocaleDateString('zh-TW') + ' ' + pubDate.toLocaleTimeString('zh-TW', {hour: '2-digit', minute:'2-digit'}),
-          src: 'Google News',
-          sent: 'neu'
-        });
-      }
-    }
-  } catch(e) {
-    console.log("新闻抓取失败", e);
-  }
-
-  if (!news.length) {
-    $('nstat').textContent = '暫時無法連接到新聞源，請稍後再試';
-  } else {
-    $('nstat').textContent = `✓ 抓到 ${news.length} 則真實新聞`;
-  }
-  renderNews(news);
-}async function fetchNews(){
   const kw = $('nkw').value || '台積電'; 
   $('nstat').textContent = '載入中...';
   let news = [];
@@ -1233,6 +1193,31 @@ async function fetchNews(){
     $('nstat').textContent = `✓ 抓到 ${news.length} 則真實新聞`;
   }
   renderNews(news);
+}
+
+// 负责把新闻渲染到画面的函数
+function renderNews(items){
+  const tot = items.length || 1;
+
+  // 1. 更新左侧情绪条（后端全为中性，直接展示）
+  $('sentbar').innerHTML = `<div style="margin-bottom:5px;display:flex;gap:8px;font-size:10px"><span class="mu">中性 ${tot}則 (100%)</span></div><div style="display:flex;height:6px;border-radius:3px;overflow:hidden"><div style="background:var(--tx4);width:100%"></div></div>`;
+
+  // 2. 【关键】更新右侧新闻列表！
+  $('nlist').innerHTML = items.map(n => `
+    <div class="ni">
+      <div class="ntit" onclick="window.open('${n.url || '#'}','_blank')">${n.title}</div>
+      <div class="nmeta">
+        <span class="nsent neu">中性</span>
+        <span>${n.src || '媒體'}</span>
+        <span>${n.time || '最新'}</span>
+      </div>
+    </div>`).join('');
+
+  // 3. 更新关键词
+  $('kwcloud').innerHTML = items.slice(0, 5).map((n, i) => {
+    const col = ['var(--ac)', 'var(--gr)', 'var(--ye)', 'var(--pu)', 'var(--cy)'][i % 5];
+    return `<span style="font-size:12px;color:${col};margin-right:8px">${n.title.slice(0, 10)}...</span>`;
+  }).join('');
 }
 // Risk
 function calcRisk(){
