@@ -1,3 +1,4 @@
+# 记得在终端执行：pip install yfinance --upgrade
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import yfinance as yf
@@ -7,6 +8,14 @@ import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
+
+# 新增一个清洗函数，处理前端可能带来的错误后缀（如 :1）
+def clean_symbol(symbol):
+    if not symbol:
+        return ''
+    # 去掉可能存在的 :1, :2 等后缀
+    symbol = symbol.split(':')[0].upper()
+    return symbol
 
 @app.route('/')
 def index():
@@ -18,7 +27,7 @@ def ping():
 
 @app.route('/yahoo/kline')
 def yahoo_kline():
-    symbol = request.args.get('symbol', '').upper()
+    symbol = clean_symbol(request.args.get('symbol', ''))
     period = request.args.get('period', '6mo')
     interval = request.args.get('interval', '1d')
     if not symbol:
@@ -38,42 +47,61 @@ def yahoo_kline():
                 'close': round(row['Close'], 2),
                 'volume': int(row['Volume']) if not pd.isna(row['Volume']) else 0
             })
-        info = ticker.info
-        info_data = {
-            'name': info.get('longName', symbol),
-            'exchange': info.get('exchange', '—'),
-            'currency': info.get('currency', 'TWD'),
-            'sector': info.get('sector', '—')
-        }
+        # 获取 info 可能会失败，所以加了 try-except 或者直接给默认值
+        try:
+            info = ticker.info
+            info_data = {
+                'name': info.get('longName', symbol),
+                'exchange': info.get('exchange', '—'),
+                'currency': info.get('currency', 'USD'),
+                'sector': info.get('sector', '—')
+            }
+        except:
+            info_data = {'name': symbol, 'exchange': '—', 'currency': 'USD', 'sector': '—'}
+            
         return jsonify({'success': True, 'symbol': symbol, 'count': len(candles), 'candles': candles, 'info': info_data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/yahoo/quote')
 def yahoo_quote():
-    symbol = request.args.get('symbol', '').upper()
+    symbol = clean_symbol(request.args.get('symbol', ''))
     if not symbol:
         return jsonify({'error': '請提供股票代號'}), 400
     try:
+        # 规避 Yahoo 的 info 接口限制：使用 history 计算最新价格
+        # 也可以先尝试获取 history 
         ticker = yf.Ticker(symbol)
-        info = ticker.info
-        price = info.get('regularMarketPrice', info.get('currentPrice', 0))
-        prev_close = info.get('regularMarketPreviousClose', info.get('previousClose', price))
-        change = price - prev_close
+        hist = ticker.history(period="2d")
+        if hist.empty:
+            return jsonify({'error': f'無法取得 {symbol} 的資料'}), 404
+            
+        close_price = float(hist['Close'].iloc[-1])
+        prev_close = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else close_price
+        change = close_price - prev_close
         change_pct = (change / prev_close * 100) if prev_close else 0
-        return jsonify({'symbol': symbol, 'price': round(price, 2), 'change': round(change, 2), 'changePct': round(change_pct, 2)})
+        
+        return jsonify({
+            'symbol': symbol, 
+            'price': round(close_price, 2), 
+            'change': round(change, 2), 
+            'changePct': round(change_pct, 2)
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/okx/kline')
 def okx_kline():
-    symbol = request.args.get('symbol', '').upper()
+    symbol = clean_symbol(request.args.get('symbol', ''))
     bar = request.args.get('bar', '1D')
     limit = int(request.args.get('limit', 300))
     if not symbol:
         return jsonify({'error': '請提供交易對代號'}), 400
+        
+    # 建议根据你的需求决定是否自动转合约，如果需要查现货，可注释掉下面两行
     if '-USDT' in symbol and '-SWAP' not in symbol:
         symbol = symbol.replace('-USDT', '-USDT-SWAP')
+        
     try:
         url = 'https://www.okx.com/api/v5/market/history-candles'
         params = {'instId': symbol, 'bar': bar, 'limit': limit}
@@ -99,11 +127,14 @@ def okx_kline():
 
 @app.route('/okx/ticker')
 def okx_ticker():
-    symbol = request.args.get('symbol', '').upper()
+    symbol = clean_symbol(request.args.get('symbol', ''))
     if not symbol:
         return jsonify({'error': '請提供交易對代號'}), 400
+        
+    # 同 kline 注释
     if '-USDT' in symbol and '-SWAP' not in symbol:
         symbol = symbol.replace('-USDT', '-USDT-SWAP')
+        
     try:
         url = 'https://www.okx.com/api/v5/market/ticker'
         response = requests.get(url, params={'instId': symbol}, timeout=10)
