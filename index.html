@@ -770,7 +770,7 @@ async function fetchDraw(){
       return; 
     }
 
-    // 過濾掉 NaN 數據，防止圖表崩潰
+    // 過濾掉 NaN 數據（最後一天常出現 NaN）
     const validCandles = (d.candles || []).filter(c => !isNaN(c.close) && c.close > 0);
 
     if (validCandles.length === 0) {
