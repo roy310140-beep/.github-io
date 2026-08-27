@@ -756,9 +756,39 @@ async function fetchDraw(){
   $('sstat').textContent='載入中...';$('cload').style.display='flex';
   try{
     const barMap={'1d':'1D','1wk':'1W','1mo':'1M','1H':'1H','4H':'4H','1D':'1D','1W':'1W'};
-    const url=src==='okx'?`${API}/okx/kline?symbol=${sym}&bar=${barMap[intv]||'1D'}&limit=300`:`${API}/yahoo/kline?symbol=${sym}&period=${per}&interval=${intv}`;
-    const d=await(await fetch(url)).json();
-    if(d.error){$('sstat').textContent='❌ '+d.error;$('cload').style.display='none';return}
+    // 加入時間戳記防止瀏覽器快取舊資料
+    const nocache = Date.now(); 
+    const url=src==='okx'
+      ? `${API}/okx/kline?symbol=${sym}&bar=${barMap[intv]||'1D'}&limit=300&_=${nocache}`
+      : `${API}/yahoo/kline?symbol=${sym}&period=${per}&interval=${intv}&_=${nocache}`;
+
+    // 使用自動重試機制
+    let d;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        // 給後端足夠的喚醒時間（從 8 秒改為 50 秒）
+        const res = await fetch(url, { signal: AbortSignal.timeout(50000) });
+        d = await res.json();
+        if (!d.error) {
+          break; // 成功取得數據就跳出迴圈
+        }
+      } catch (e) {
+        // 失敗就等 2 秒再試一次
+      }
+      attempts++;
+      $('sstat').textContent = `重試中... (${attempts}/${maxAttempts})`;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    if (!d || d.error) { 
+      $('sstat').textContent='❌ 暫時無法取得資料，請稍後再試'; 
+      $('cload').style.display='none'; 
+      return; 
+    }
+
     G.candles=d.candles;G.symbol=sym;G.source=src;
     if(d.info){$('sinfo').innerHTML=`<b style="color:var(--tx)">${d.info.name||sym}</b><br>交易所：${d.info.exchange||'—'}<br>幣種：${d.info.currency||'—'}<br>產業：${d.info.sector||'—'}`}
     const last=d.candles[d.candles.length-1],first=d.candles[0];
@@ -782,7 +812,6 @@ async function fetchDraw(){
     $('nsyminfo').textContent=`已載入 ${sym}，點擊「載入標的新聞」`;
   }catch(e){$('sstat').textContent='❌ 連線失敗';$('cload').style.display='none'}
 }
-
 // Indicators
 function cMA(data,n){return data.map((_,i)=>i<n-1?null:data.slice(i-n+1,i+1).reduce((a,b)=>a+b)/n)}
 function cBB(cl,n,k){
