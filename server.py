@@ -1,16 +1,19 @@
 # 记得在终端执行：pip install yfinance --upgrade
-import yfinance as yf
-import requests
-from curl_cffi import requests as curl_requests  # 新增这一行
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import yfinance as yf
 import requests
+from curl_cffi import requests as curl_requests
 from datetime import datetime
 import pandas as pd
+import os
 
+from curl_cffi import requests as curl_requests
 app = Flask(__name__)
 CORS(app)
+
+# 创建模拟真实 Chrome 浏览器的 Session，解决 Yahoo 封 IP 问题
+yf_session = curl_requests.Session(impersonate="chrome")
 
 # 新增一个清洗函数，处理前端可能带来的错误后缀（如 :1）
 def clean_symbol(symbol):
@@ -73,7 +76,6 @@ def yahoo_quote():
         return jsonify({'error': '請提供股票代號'}), 400
     try:
         # 规避 Yahoo 的 info 接口限制：使用 history 计算最新价格
-        # 也可以先尝试获取 history 
         ticker = yf.Ticker(symbol, session=yf_session)
         hist = ticker.history(period="2d")
         if hist.empty:
@@ -153,7 +155,6 @@ def okx_ticker():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-import os
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # Render 会自动分配端口
     app.run(host='0.0.0.0', port=port)
