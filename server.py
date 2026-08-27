@@ -1,4 +1,7 @@
 # 记得在终端执行：pip install yfinance --upgrade
+import yfinance as yf
+import requests
+from curl_cffi import requests as curl_requests  # 新增这一行
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import yfinance as yf
@@ -33,7 +36,7 @@ def yahoo_kline():
     if not symbol:
         return jsonify({'error': '請提供股票代號'}), 400
     try:
-        ticker = yf.Ticker(symbol)
+        ticker = yf.Ticker(symbol, session=yf_session)
         hist = ticker.history(period=period, interval=interval)
         if hist.empty:
             return jsonify({'error': f'無法取得 {symbol} 的資料'}), 404
@@ -71,7 +74,7 @@ def yahoo_quote():
     try:
         # 规避 Yahoo 的 info 接口限制：使用 history 计算最新价格
         # 也可以先尝试获取 history 
-        ticker = yf.Ticker(symbol)
+        ticker = yf.Ticker(symbol, session=yf_session)
         hist = ticker.history(period="2d")
         if hist.empty:
             return jsonify({'error': f'無法取得 {symbol} 的資料'}), 404
